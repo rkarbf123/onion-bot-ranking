@@ -25,16 +25,16 @@ export default function App() {
   const initial = entries.find(e => e.type === 'initial');
   const failure = indexError || error || (selected && !entry && !indexLoading ? '해당 기록을 찾을 수 없습니다.' : '');
   return <div className="app-shell">
-    <header className="topbar"><a className="brand" href="#" onClick={() => choose('')}><span className="brand-mark">🧅</span><span>양파봇 <b>랭킹</b></span></a><span className="archive-label"><span /> XP ARCHIVE</span></header>
+    <header className="topbar"><a className="brand" href="#" onClick={() => choose('')}><span className="brand-mark">🧅</span><span>양파봇 <b>랭킹</b></span></a><span className="archive-label"><span /></span></header>
     <div className="workspace">
-      <aside className="sidebar"><p className="eyebrow">기록 보관함</p><h1>함께 쌓아온<br />경험치의 기록<span>.</span></h1><p className="sidebar-description">매달의 활동을 한눈에.<br />확정된 XP 랭킹을 모아두었어요.</p>
+      <aside className="sidebar"><p className="eyebrow">기록</p><h1><br /><span>.</span></h1><p className="sidebar-description">매달의 활동을 한눈에.<br />확정된 XP 랭킹을 모아두었어요.</p>
         <div className="shortcuts"><button onClick={() => entries[0] && choose(entries[0].id)} disabled={!entries.length}>↗ 최신 기록</button><button onClick={() => initial && choose(initial.id)} disabled={!initial}>◷ 최초 기록</button></div>
         <nav aria-label="연도별 기록">{years.map(year => <section key={year} className="year-group"><h2>{year}<span>{entries.filter(e => e.snapshotAt.startsWith(year)).length}</span></h2>{entries.filter(e => e.snapshotAt.startsWith(year)).map(e => <button className={`archive-link ${entry?.id === e.id ? 'selected' : ''}`} key={e.id} onClick={() => choose(e.id)}><span>{e.type === 'initial' ? '최초 누적 기록' : `${Number(e.month?.slice(5))}월 랭킹`}</span><span>↗</span></button>)}</section>)}</nav>
         <div className="sidebar-note"><span>ⓘ</span><p>매월 1일, 지난 기간의 랭킹이<br />새로운 기록으로 보관됩니다.</p></div>
       </aside>
       <main>
         <div className="breadcrumb">기록 보관함 <span>/</span> {entry?.type === 'initial' ? '최초 누적 기록' : entry?.month || '월별 랭킹'}</div>
-        <div className="page-heading"><div><p className="eyebrow accent">MONTHLY XP RANKINGS</p><h2>{entry?.title || '양파봇 랭킹'}</h2><p>우리의 활동이 차곡차곡 쌓인 기록을 만나보세요.</p></div><span className="record-badge">◉ 확정 기록</span></div>
+        <div className="page-heading"><div><p className="eyebrow accent">월간 랭킹</p><h2>{entry?.title || '누적 경험치 순위'}</h2><p></p></div><span className="record-badge">◉ 확정 기록</span></div>
         <label className="mobile-selector">기록 선택<select value={entry?.id || ''} onChange={e => choose(e.target.value)}><option value="" disabled>기록 선택</option>{entries.map(e => <option key={e.id} value={e.id}>{e.title}</option>)}</select></label>
         {failure ? <div role="alert" className="empty-state"><span>↻</span><h3>{failure}</h3><button className="button" onClick={() => setReload(r => r + 1)}>다시 불러오기</button>{selected && !entry && <button className="button" onClick={() => choose('')}>최신 기록으로</button>}</div>
         : indexLoading || loading ? <div role="status" className="empty-state"><span className="loading-dot" /><p>기록을 불러오고 있어요.</p></div>
@@ -48,7 +48,7 @@ export default function App() {
             <div className="pagination"><span>{filtered.length ? `${(safePage - 1) * 25 + 1}–${Math.min(safePage * 25, filtered.length)}` : '0'} / {number.format(filtered.length)}명</span><div><button disabled={safePage === 1} onClick={() => setPage(safePage - 1)} aria-label="이전 페이지">←</button><span>{safePage} / {pages}</span><button disabled={safePage === pages} onClick={() => setPage(safePage + 1)} aria-label="다음 페이지">→</button></div></div>
           </section>
         </>}
-        <footer><span>🧅 양파봇 랭킹</span><p>확정된 기록만 표시됩니다. 공개 제외·비공개·삭제 요청은 Discord 서버 관리자에게 문의해주세요.</p></footer>
+        <footer><span>🧅 양파봇 랭킹</span><p>확정된 기록만 표시됩니다. 공개 제외·비공개·삭제 요청은 서버 내 문의하기 채널이나 개인 메시지로 문의해주세요.</p></footer>
       </main>
     </div>
   </div>;
