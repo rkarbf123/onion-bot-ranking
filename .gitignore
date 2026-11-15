@@ -1,0 +1,16 @@
+.env
+.env.*
+!.env.example
+node_modules/
+website/dist/
+*.db
+*.db-*
+*.db.*
+archive/backups/
+archive/snapshots/
+archive/private/
+archive/*.lock
+.tools/
+.node-*
+test-results/
+*.tsbuildinfo

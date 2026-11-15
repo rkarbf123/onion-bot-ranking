@@ -1,0 +1,18 @@
+{
+  "levels.db": {
+    "sha256": "1be6984c88a8a5cd18e90580bba8c0ab1aec28baf96d9d8d4837a3b67fd3f8fb",
+    "unchanged": true
+  },
+  "levels_backup.db": {
+    "sha256": "f34beef7d8f1dcd55185cab19e09a7b766619388776ed50cf15b5675c7b7f3a6",
+    "unchanged": true
+  },
+  "bot_database.db": {
+    "sha256": "2072f29a690d41b1cb9e6c2654d7427076cf1af45bd110729171a3ddeed73c36",
+    "unchanged": true
+  },
+  "commands.js": {
+    "sha256": "6e3fe7a4d569bab37ab585fe735f4e3e8ad002eae716b3c3b1c50299db69142a",
+    "unchanged": true
+  }
+}
