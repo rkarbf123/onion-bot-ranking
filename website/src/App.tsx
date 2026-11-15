@@ -27,7 +27,7 @@ export default function App() {
   return <div className="app-shell">
     <header className="topbar"><a className="brand" href="#" onClick={() => choose('')}><span className="brand-mark">🧅</span><span>양파봇 <b>랭킹</b></span></a><span className="archive-label"><span /></span></header>
     <div className="workspace">
-      <aside className="sidebar"><p className="eyebrow">기록</p><h1><br /><span>.</span></h1><p className="sidebar-description">매달의 활동을 한눈에.<br />확정된 XP 랭킹을 모아두었어요.</p>
+      <aside className="sidebar"><p className="sidebar-description">매달의 활동을 한눈에.<br />누적 경험치 순위를 모아두었어요.</p>
         <div className="shortcuts"><button onClick={() => entries[0] && choose(entries[0].id)} disabled={!entries.length}>↗ 최신 기록</button><button onClick={() => initial && choose(initial.id)} disabled={!initial}>◷ 최초 기록</button></div>
         <nav aria-label="연도별 기록">{years.map(year => <section key={year} className="year-group"><h2>{year}<span>{entries.filter(e => e.snapshotAt.startsWith(year)).length}</span></h2>{entries.filter(e => e.snapshotAt.startsWith(year)).map(e => <button className={`archive-link ${entry?.id === e.id ? 'selected' : ''}`} key={e.id} onClick={() => choose(e.id)}><span>{e.type === 'initial' ? '최초 누적 기록' : `${Number(e.month?.slice(5))}월 랭킹`}</span><span>↗</span></button>)}</section>)}</nav>
         <div className="sidebar-note"><span>ⓘ</span><p>매월 1일, 지난 기간의 랭킹이<br />새로운 기록으로 보관됩니다.</p></div>
