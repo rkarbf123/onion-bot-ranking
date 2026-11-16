@@ -22,16 +22,24 @@ function profileDb(t) {
 test('profile tracks best and current ranks with stable ties and excludes zero XP', t => {
     const db = profileDb(t);
     db.exec("CREATE TABLE users(user_id TEXT, level INTEGER, xp INTEGER); INSERT INTO users VALUES ('10',3,50), ('20',2,40), ('30',2,40)");
-    assert.deepEqual(getProfileData(db, '20'), { totalXp: 140, rank: 2, bestRank: 2, totalUsers: 3, collecting: false });
+    assert.deepEqual(getProfileData(db, '20'), { level: 2, xp: 40, totalXp: 140, rank: 2, bestRank: 2, totalUsers: 3, collecting: false });
     assert.equal(getProfileData(db, '30').rank, 3);
     assert.equal(getProfileData(db, '10').bestRank, 1);
     assert.equal(getProfileData(db, '40').rank, null);
     assert.equal(db.prepare('SELECT count(*) AS n FROM users').get().n, 3);
     db.exec('DELETE FROM users');
-    assert.deepEqual(getProfileData(db, '20'), { totalXp: 0, rank: null, bestRank: 2, totalUsers: 0, collecting: false });
+    assert.deepEqual(getProfileData(db, '20'), { level: 1, xp: 0, totalXp: 0, rank: null, bestRank: 2, totalUsers: 0, collecting: false });
     db.exec("INSERT INTO users VALUES ('20',1,0)");
     assert.equal(getProfileData(db, '20').rank, null);
     assert.equal(getProfileData(db, '20').bestRank, 2);
+});
+
+test('profile keeps level progress available while ranks are collecting', t => {
+    const db = profileDb(t);
+    db.exec("CREATE TABLE users(user_id TEXT, level INTEGER, xp INTEGER); INSERT INTO users VALUES ('20',10,250)");
+    const at = Date.parse('2026-11-01T12:00:00+09:00');
+    assert.deepEqual(getProfileData(db, '20', at), { level: 10, xp: 250, totalXp: 4750, rank: null, bestRank: null, totalUsers: 1, collecting: true });
+    assert.deepEqual(getProfileData(db, 'missing', at), { level: 1, xp: 0, totalXp: 0, rank: null, bestRank: null, totalUsers: 1, collecting: true });
 });
 
 test('profile renders the updated layout with a circular avatar and black background', async () => {
@@ -41,13 +49,26 @@ test('profile renders the updated layout with a circular avatar and black backgr
     const png = await renderProfile({ displayName: '최예린', avatarImage: avatar, bestRank: 1, rank: 2 });
     assert.equal(png.subarray(1, 4).toString(), 'PNG');
     const img = await loadImage(png);
-    assert.equal(img.width, 994); assert.equal(img.height, 306);
+    assert.equal(img.width, 994); assert.equal(img.height, 316);
     const canvas = createCanvas(img.width, img.height); const ctx = canvas.getContext('2d');ctx.drawImage(img, 0, 0);
     const pixel = (x, y) => [...ctx.getImageData(x, y, 1, 1).data];
-    assert.deepEqual(pixel(159, 153), [255, 0, 0, 255]);
-    assert.deepEqual(pixel(29, 23), [0, 0, 0, 255]);
+    assert.deepEqual(pixel(162, 158), [255, 0, 0, 255]);
+    assert.deepEqual(pixel(32, 28), [0, 0, 0, 255]);
     assert.deepEqual(pixel(10, 10), [0, 0, 0, 255]);
     assert.deepEqual(pixel(0, 0), [0, 0, 0, 255]);
+});
+
+test('profile bar uses current-level XP over the next-level requirement and clamps its fill', async () => {
+    for (const [xp, fraction] of [[0, 0], [250, 0.25], [500, 0.5], [1000, 1], [1500, 1], [-100, 0]]) {
+        const image = await loadImage(await renderProfile({ displayName: '테스트', level: 10, xp }));
+        const canvas = createCanvas(image.width, image.height);
+        const ctx = canvas.getContext('2d');ctx.drawImage(image, 0, 0);
+        for (const offset of [20, 100, 200, 300, 400, 480]) {
+            const expected = offset < 508 * fraction ? [0, 243, 181, 255] : [83, 83, 83, 255];
+            assert.deepEqual([...ctx.getImageData(344 + offset, 266, 1, 1).data], expected, `XP ${xp}, offset ${offset}`);
+        }
+        assert.deepEqual([...ctx.getImageData(860, 266, 1, 1).data], [0, 0, 0, 255]);
+    }
 });
 
 test('rank numbers use the reference gradients, solid colors and white outside the top ten', () => {
@@ -76,8 +97,8 @@ test('collecting profiles replace both rank values even when stale numbers are s
     assert.deepEqual(first,second);
     const img=await loadImage(first);const canvas=createCanvas(img.width,img.height);
     const ctx=canvas.getContext('2d');ctx.drawImage(img,0,0);
-    const highest=ctx.getImageData(750,70,148,68).data;
-    const current=ctx.getImageData(750,168,148,68).data;
+    const highest=ctx.getImageData(524,120,148,52).data;
+    const current=ctx.getImageData(524,178,148,52).data;
     assert.deepEqual(highest,current);
     assert.ok(highest.some((channel,i)=>i%4!==3 && channel===255));
 });

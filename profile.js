@@ -22,10 +22,11 @@ const RANK_COLORS = {
 function getProfileData(db, userId, at = Date.now()) {
     return db.transaction(() => {
         const { seasonId, eligibleAt, collecting } = getSeasonStatus(db, at);
+        const user = db.prepare('SELECT level, xp FROM users WHERE user_id=?').get(userId);
+        const progress = { level: user?.level ?? 1, xp: user?.xp ?? 0 };
         if (collecting) {
-            const user = db.prepare('SELECT ((level * (level - 1) / 2 * 100) + xp) AS totalXp FROM users WHERE user_id=?').get(userId);
             const count = db.prepare('SELECT count(*) AS n FROM users WHERE ((level * (level - 1) / 2 * 100) + xp) > 0').get();
-            return { totalXp: user?.totalXp ?? 0, rank: null, bestRank: null, totalUsers: count.n, collecting: true };
+            return { ...progress, totalXp: progress.level * (progress.level - 1) / 2 * 100 + progress.xp, rank: null, bestRank: null, totalUsers: count.n, collecting: true };
         }
         recordRankHistory(db, at);
         const users = db.prepare(`
@@ -36,7 +37,7 @@ function getProfileData(db, userId, at = Date.now()) {
         const index = users.findIndex(user => user.user_id === userId);
         const rank = index < 0 ? null : index + 1;
         const history = db.prepare('SELECT best_rank FROM system.season_rank_history WHERE season_id = ? AND user_id = ? AND recorded_at >= ?').get(seasonId, userId, eligibleAt);
-        return { totalXp: index < 0 ? 0 : users[index].totalXp, rank, bestRank: history?.best_rank ?? null, totalUsers: users.length, collecting: false };
+        return { ...progress, totalXp: index < 0 ? 0 : users[index].totalXp, rank, bestRank: history?.best_rank ?? null, totalUsers: users.length, collecting: false };
     })();
 }
 
@@ -45,19 +46,18 @@ function centeredBaseline(ctx, text, centerY) {
     return centerY + (metrics.actualBoundingBoxAscent - metrics.actualBoundingBoxDescent) / 2;
 }
 
-function drawText(ctx, text, x, centerY, size, maxWidth, color = '#ffffff', align = 'left') {
+function drawText(ctx, text, x, centerY, size, maxWidth, color = '#ffffff', align = 'left', weight = 400) {
     ctx.fillStyle = color;
     ctx.textAlign = align;
-    ctx.font = `${size}px ${FONT}`;
-    while (size > 16 && ctx.measureText(text).width > maxWidth) ctx.font = `${--size}px ${FONT}`;
+    ctx.font = `${weight} ${size}px ${FONT}`;
+    while (size > 16 && ctx.measureText(text).width > maxWidth) ctx.font = `${weight} ${--size}px ${FONT}`;
     ctx.textBaseline = 'alphabetic';
     ctx.fillText(text, x, centeredBaseline(ctx, text, centerY), maxWidth);
 }
 
-function drawRank(ctx, rank, x, centerY) {
+function drawRank(ctx, rank, x, centerY, size = 70) {
     const text = rank === null || rank === undefined ? '—' : `#${rank}`;
     const colors = RANK_COLORS[rank] || ['#ffffff'];
-    let size = 70;
     ctx.font = `700 ${size}px ${FONT}`;
     while (size > 16 && ctx.measureText(text).width > 148) ctx.font = `700 ${--size}px ${FONT}`;
     ctx.textAlign = 'left';
@@ -76,8 +76,8 @@ async function fetchAvatar(url) {
     return loadImage(Buffer.from(await response.arrayBuffer()));
 }
 
-async function renderProfile({ displayName, avatarUrl, avatarImage, bestRank, rank, collecting = false }) {
-    const canvas = createCanvas(994, 306);
+async function renderProfile({ displayName, avatarUrl, avatarImage, bestRank, rank, collecting = false, level = 1, xp = 0 }) {
+    const canvas = createCanvas(994, 316);
     const ctx = canvas.getContext('2d');
     ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -88,25 +88,38 @@ async function renderProfile({ displayName, avatarUrl, avatarImage, bestRank, ra
     }
     ctx.save();
     ctx.beginPath();
-    ctx.arc(159, 153, 130, 0, Math.PI * 2);
+    ctx.arc(162, 158, 130, 0, Math.PI * 2);
     ctx.clip();
     ctx.fillStyle = '#c5d0d8';
-    ctx.fillRect(29, 23, 260, 260);
+    ctx.fillRect(32, 28, 260, 260);
     if (avatar) {
         const side = Math.min(avatar.width, avatar.height);
-        ctx.drawImage(avatar, (avatar.width - side) / 2, (avatar.height - side) / 2, side, side, 29, 23, 260, 260);
-    } else drawText(ctx, Array.from(displayName || '?')[0], 159, 153, 84, 200, '#ffffff', 'center');
+        ctx.drawImage(avatar, (avatar.width - side) / 2, (avatar.height - side) / 2, side, side, 32, 28, 260, 260);
+    } else drawText(ctx, Array.from(displayName || '?')[0], 162, 158, 84, 200, '#ffffff', 'center');
     ctx.restore();
 
-    drawText(ctx, '최고 순위', 453, 104, 64, 284);
-    drawText(ctx, '현재 순위', 453, 202, 64, 284);
+    drawText(ctx, displayName || '?', 344, 78, 60, 606, '#ffffff', 'left', 700);
+    drawText(ctx, '최고 순위', 344, 146, 42, 172);
+    drawText(ctx, '현재 순위', 344, 204, 42, 172);
     if (collecting) {
-        drawText(ctx, '집계중', 750, 104, 44, 148);
-        drawText(ctx, '집계중', 750, 202, 44, 148);
+        drawText(ctx, '집계중', 524, 146, 38, 148);
+        drawText(ctx, '집계중', 524, 204, 38, 148);
     } else {
-        drawRank(ctx, bestRank, 750, 104);
-        drawRank(ctx, rank, 750, 202);
+        drawRank(ctx, bestRank, 524, 146, 42);
+        drawRank(ctx, rank, 524, 204, 42);
     }
+
+    const progress = Math.max(0, Math.min(1, xp / (level * 100)));
+    ctx.beginPath();
+    ctx.roundRect(344, 254, 508, 24, 12);
+    ctx.fillStyle = '#535353';
+    ctx.fill();
+    ctx.save();
+    ctx.clip();
+    ctx.fillStyle = '#00f3b5';
+    ctx.fillRect(344, 254, 508 * progress, 24);
+    ctx.restore();
+    drawText(ctx, `LV. ${level}`, 866, 266, 28, 104);
     return canvas.toBuffer('image/png');
 }
 
