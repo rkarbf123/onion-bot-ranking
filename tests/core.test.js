@@ -129,20 +129,22 @@ test('safe backup includes WAL commits and preserves startup backup function', t
     const startup = path.join(f.root, 'levels_backup.db'); f.manager.startupBackup(startup); f.manager.startupBackup(startup);
     const b = new Database(startup, {readonly:true}); assert.equal(b.pragma('integrity_check', {simple:true}),'ok'); b.close();
 });
-test('quiz reward formula, question ranges and operators unchanged', () => {
-    assert.equal(rewardAmount({level:3,xp:50},'RANDOM',()=>0),100);
-    assert.equal(rewardAmount({level:3,xp:50},'RANDOM',()=>.99999),500);
-    for (const mode of ['1.1','1.2']) assert.equal(rewardAmount({level:3,xp:50},mode),Math.floor(350*(parseFloat(mode)-1)));
+test('quiz rewards range from 70 to 100 and question ranges and operators are retained', () => {
+    assert.equal(rewardAmount(()=>0),70);
+    assert.equal(rewardAmount(()=>.99999),100);
+    for (let i=0;i<31;i++) assert.equal(rewardAmount(()=>(i+.5)/31),70+i);
     for (let i=0;i<100;i++){const q=generateQuestion(); assert.ok(q.n1>=1&&q.n1<=50&&q.n2>=1&&q.n2<=50);assert.ok(['+','-','*'].includes(q.op));}
 });
 test('quiz claim commits XP and cooldown atomically, first winner only and survives restart', t => {
     const f = fixture(t); activeQuiz(f);
+    f.manager.handle.prepare("INSERT INTO settings(key,value) VALUES ('quiz_reward_mode','1.2') ON CONFLICT(key) DO UPDATE SET value=excluded.value").run();
     const now = Date.parse('2026-12-01T00:03:00+09:00');
     const quiz = new QuizManager({manager:f.manager,state:f.state,channelId:'42',clock:()=>now});
     const m=fakeMessage(); const result=quiz.claim(m); assert.ok(result); assert.equal(result.quiz.nextQuizAt,now+COOLDOWN);
     assert.equal(quiz.claim(m),null);
     const user = f.manager.handle.prepare('SELECT * FROM users WHERE user_id=?').get(m.author.id);
     assert.equal((user.level*(user.level-1)/2*100)+user.xp,result.rewardXp);
+    assert.ok(result.rewardXp>=70 && result.rewardXp<=100);
     f.restart(); const restarted=new QuizManager({manager:f.manager,state:f.state,clock:()=>now}); assert.equal(restarted.claim(m),null);
 });
 test('reward transaction rollback preserves winner intent and replay pays once', t => {

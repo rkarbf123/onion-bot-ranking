@@ -110,7 +110,7 @@ test('role cleanup deletes only numeric LV roles, reports blocked roles and cont
 test('quiz announces the reward without sending level-up notifications', async () => {
     const replies = [];
     const quiz = new QuizManager({ EmbedBuilder });
-    await quiz.announce({ author: { toString: () => '<@1>', displayAvatarURL: () => 'https://cdn.discordapp.com/avatar.png' }, reply: async value => replies.push(value) }, { send() { assert.fail('level-up notice sent'); } }, { rewardXp: 500, mode: 'RANDOM', levels: [2, 3, 4] });
+    await quiz.announce({ author: { toString: () => '<@1>', displayAvatarURL: () => 'https://cdn.discordapp.com/avatar.png' }, reply: async value => replies.push(value) }, { send() { assert.fail('level-up notice sent'); } }, { rewardXp: 100, levels: [2, 3, 4] });
     assert.equal(replies.length, 1);
     assert.equal(replies[0].embeds[0].data.title, '정답!');
 });

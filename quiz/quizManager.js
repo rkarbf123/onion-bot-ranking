@@ -50,7 +50,7 @@ class QuizManager {
                 if (!sent) {
                     if (this.clock() - quiz.createdAt > 120000) throw new Error('Uncertain quiz send. Inspect channel and use quiz-attach/quiz-reset; no duplicate was sent.');
                     const embed = new this.EmbedBuilder().setColor('#FFA500').setTitle('🔔 퀴즈')
-                        .setDescription('가장 먼저 정답을 맞히는 분께 보상을 드립니다!')
+                        .setDescription('가장 먼저 정답을 맞히는 분께 70~100 XP를 드립니다!')
                         .addFields({ name: '📝 문제', value: `**${quiz.n1} ${quiz.op} ${quiz.n2} = ?**`, inline: true })
                         .setFooter({ text: '다음 문제가 나오기 전까지만 정답이 인정됩니다!' });
                     sent = await channel.send({ embeds: [embed], nonce: quiz.nonce, enforceNonce: true });
@@ -111,12 +111,11 @@ class QuizManager {
             void this.start();
         }, Math.max(0, at - this.clock()));
     }
-    async announce(message, channel, { rewardXp, mode }) {
+    async announce(message, channel, { rewardXp }) {
         const embed = new this.EmbedBuilder().setColor('#00FF00').setTitle('정답!')
             .setThumbnail(message.author.displayAvatarURL({ dynamic: true }))
             .setDescription(`${message.author}님이 가장 먼저 정답을 맞혔습니다!`)
-            .addFields({ name: '💰 획득 경험치', value: `**+${rewardXp.toLocaleString()} XP**`, inline: true },
-                { name: '⚙️ 보상 모드', value: `\`${mode}\``, inline: true }).setTimestamp();
+            .addFields({ name: '💰 획득 경험치', value: `**+${rewardXp.toLocaleString()} XP**`, inline: true }).setTimestamp();
         await message.reply({ embeds: [embed] });
     }
     stop() { this.stopped = true; if (this.timer) this.timers.clearTimeout(this.timer); this.collector?.stop('shutdown'); this.collector = null; }

@@ -23,8 +23,8 @@ function adjustXp(db, event) {
     return { amount: totalXp - previousTotalXp, previousTotalXp, totalXp, level, xp, levels: [] };
 }
 
-function rewardAmount(user, mode, random = Math.random) {
-    return mode === 'RANDOM' ? Math.floor(random() * 401) + 100 : Math.floor(((user.level * 100) + user.xp) * (parseFloat(mode) - 1.0));
+function rewardAmount(random = Math.random) {
+    return Math.floor(random() * 31) + 70;
 }
 function applyEvent(db, event) {
     if (event.type === 'xpAdjustment') return adjustXp(db, event);
@@ -38,8 +38,8 @@ function applyEvent(db, event) {
     }
     db.prepare('INSERT OR IGNORE INTO users(user_id,xp,level) VALUES (?,0,1)').run(event.userId);
     const user = db.prepare('SELECT * FROM users WHERE user_id=?').get(event.userId);
-    const mode = event.type === 'quiz' ? db.prepare("SELECT value FROM settings WHERE key='quiz_reward_mode'").get()?.value || 'RANDOM' : null;
-    const amount = event.type === 'quiz' ? rewardAmount(user, mode) : event.amount;
+    const mode = event.type === 'quiz' ? 'RANDOM' : null;
+    const amount = event.type === 'quiz' ? rewardAmount() : event.amount;
     if (!Number.isSafeInteger(amount) || amount < 0 || !Number.isSafeInteger(user.level) || user.level < 1 || !Number.isSafeInteger(user.xp)) throw new Error('Invalid XP event or user data');
     let newXp = user.xp + amount; let newLevel = user.level; const levels = [];
     while (newXp >= newLevel * 100) { newXp -= newLevel * 100; newLevel++; levels.push(newLevel); }

@@ -1,10 +1,6 @@
-const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, AttachmentBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, AttachmentBuilder } = require('discord.js');
 const { getProfileData, renderProfile } = require('./profile');
 const { XP_ADMIN_ID } = require('./archive/xpEvents');
-
-// 관리 계정 id
-const ADMIN_IDS = [XP_ADMIN_ID];
-
 
 module.exports = [
     {
@@ -19,7 +15,9 @@ module.exports = [
                     `📊 \`/경험치\` : 내 레벨과 경험치 확인\n` +
                     `🪪 \`/프로필\` : 내 프로필 카드와 최고·현재 순위 확인\n` +
                     `🏆 \`/랭킹\` : 전체 순위 확인\n` +
-                    `🔔 **선착순 퀴즈** : 문제를 맞히고 보너스 XP 획득` +
+                    `💬 **채팅** : 메시지당 10 XP\n` +
+                    `🎧 **음성 채널** : 접속 60초마다 20 XP\n` +
+                    `🔔 **선착순 퀴즈** : 첫 정답자에게 70~100 XP 지급` +
                     (interaction.user.id === XP_ADMIN_ID ? `\n🛠️ \`/xp\` : 사용자 경험치 추가·차감` : '')
                 )
                 .setFooter({ text: '이용해주셔서 감사합니다.' });
@@ -137,21 +135,6 @@ module.exports = [
             embed.addFields({ name: '👤 내 순위', value: `현재 **${interaction.user.username}**님은 **${myRankText}**입니다.`, inline: false });
 
             await interaction.reply({ embeds: [embed] });
-        }
-    },
-    {
-        data: new SlashCommandBuilder()
-            .setName('퀴즈설정')
-            .setDescription('[관리자] 퀴즈 보상 모드 설정')
-            .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-            .addStringOption(option => 
-                option.setName('모드').setDescription('모드 선택').setRequired(true)
-                    .addChoices({ name: '랜덤', value: 'RANDOM' }, { name: '1.1배', value: '1.1' }, { name: '1.2배', value: '1.2' })),
-        async execute(interaction, db) {
-            if (!ADMIN_IDS.includes(interaction.user.id)) return interaction.reply({ content: '❌ 권한 없음', ephemeral: true });
-            const mode = interaction.options.getString('모드');
-            db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?').run('quiz_reward_mode', mode, mode);
-            await interaction.reply({ content: `✅ 모드가 \`${mode}\`로 변경되었습니다.`, ephemeral: true });
         }
     }
 ];

@@ -8,23 +8,27 @@ test('bot retains commands, channel restriction and XP without retired timers or
     const state=new StateManager(Database,path.join(directory,'system_state.db'));const manager=new DatabaseManager({Database,dbFile,state,directory});
     const originalStartupBackup=manager.startupBackup.bind(manager);manager.startupBackup=()=>originalStartupBackup(path.join(temp,'levels_backup.db'));
     t.after(()=>{manager.close();state.close();fs.rmSync(temp,{recursive:true,force:true});});
-    const sends=[];const registered=[];let client;const intervals=[];const jobs=[];let quizStarted=0;
+    const sends=[];const registered=[];let client;const intervals=[];const jobs=[];let quizStarted=0;let voiceStarted=0;
     const channel={send:async data=>{sends.push(data);}};
-    class FakeClient extends EventEmitter{constructor(){super();client=this;this.channels={cache:new discord.Collection([['1467237706378514626',channel]])};this.users={cache:new discord.Collection()};this.guilds={cache:new discord.Collection()};this.user={tag:'test',id:'bot'};}login(){return Promise.resolve();}destroy(){}}
+    class FakeClient extends EventEmitter{constructor(options){super();client=this;this.options=options;this.channels={cache:new discord.Collection([['1467237706378514626',channel]])};this.users={cache:new discord.Collection()};this.guilds={cache:new discord.Collection()};this.user={tag:'test',id:'bot'};}login(){return Promise.resolve();}destroy(){}}
     class FakeRest{setToken(){return this;}async put(route,{body}){registered.push(...body);}}
     class FakeQuiz{start(){quizStarted++;}stop(){}}
+    class FakeVoice{start(){voiceStarted++;}stop(){}}
     const fakeProcess={env:{DISCORD_TOKEN:'mock',APPLICATION_ID:'123'},once(){},exitCode:0};
     const mocks={dotenv:{config(){}},'discord.js':{...discord,Client:FakeClient,REST:FakeRest},'./archive/archiveManager':{openRuntime:()=>({manager,state,close(){}})},'./archive/githubUploader':class{},'./archive/scheduler':{startScheduler:()=>async()=>{}},'./quiz/quizManager':{QuizManager:FakeQuiz},'node-schedule':{scheduleJob:(rule,callback)=>{jobs.push({rule,callback});return{cancel(){}};}}};
+    mocks['./voice/voiceXpManager']={VoiceXpManager:FakeVoice};
     const customMath=Object.create(Math);customMath.random=()=>0;
     vm.runInNewContext(fs.readFileSync(path.resolve(__dirname,'../main.js'),'utf8'),{require:id=>Object.hasOwn(mocks,id)?mocks[id]:requireFromMain(id),__dirname:path.resolve(__dirname,'..'),process:fakeProcess,console:{log(){},error(){}},setInterval:fn=>{intervals.push(fn);return intervals.length;},setTimeout:()=>1,clearInterval(){},clearTimeout(){},Math:customMath,Date});
-    await client.listeners('ready')[0]();assert.equal(quizStarted,1);assert.deepEqual(registered.map(c=>c.name),['도움말','프로필','경험치','xp','랭킹','퀴즈설정']);
+    await client.listeners('ready')[0]();assert.equal(quizStarted,1);assert.equal(voiceStarted,1);
+    assert.ok(client.options.intents.includes(discord.GatewayIntentBits.GuildVoiceStates));
+    assert.deepEqual(registered.map(c=>c.name),['도움말','프로필','경험치','xp','랭킹']);
     assert.equal((registered.find(c=>c.name==='랭킹').options||[]).length,0);
     assert.equal((registered.find(c=>c.name==='경험치').options||[]).length,0);
     assert.deepEqual(registered.find(c=>c.name==='xp').options.map(o=>o.name),['대상','작업','수량']);
     const author={id:'999999999999999999',bot:false,toString:()=>'<@999999999999999999>',username:'테스트',displayAvatarURL:()=> 'https://example.test/avatar.png'};
     manager.handle.prepare('DELETE FROM users WHERE user_id=?').run(author.id);
     const message=client.listeners('messageCreate')[0];
-    for(let i=0;i<3;i++)await message({id:String(i),author,guild:{id:'g'},content:'x'.repeat(300)});
+    for(let i=0;i<15;i++)await message({id:String(i),author,guild:{id:'g'},content:'x'.repeat(300)});
     let user=manager.handle.prepare('SELECT * FROM users WHERE user_id=?').get(author.id);assert.equal(user.level,2);assert.equal(user.xp,50);assert.equal(user.weekly_xp,0);assert.equal(sends.length,0);
     assert.equal(intervals.length,0);await message({id:'normal',author,guild:{id:'g'},content:''});user=manager.handle.prepare('SELECT * FROM users WHERE user_id=?').get(author.id);assert.equal(user.xp,60);
     await message({id:'bot',author:{...author,bot:true},guild:{id:'g'},content:'hello'});assert.equal(manager.handle.prepare('SELECT xp FROM users WHERE user_id=?').get(author.id).xp,60);
@@ -47,8 +51,6 @@ test('bot retains commands, channel restriction and XP without retired timers or
     assert.equal(manager.handle.prepare('SELECT level FROM users WHERE user_id=?').get(author.id).level,1);
     assert.equal(manager.handle.prepare('SELECT xp FROM users WHERE user_id=?').get(author.id).xp,60);
     await interaction({isChatInputCommand:()=>true,channelId:'wrong',reply:async v=>replies.push(v)});assert.match(replies.at(-1).content,/전용 채널/);
-    await interaction({isChatInputCommand:()=>true,channelId:'1467237706378514626',commandName:'퀴즈설정',user:{...author,id:'1159841882290008216'},options:{getString:()=> '1.2'},reply:async v=>replies.push(v)});
-    assert.equal(manager.handle.prepare("SELECT value FROM settings WHERE key='quiz_reward_mode'").get().value,'1.2');
     assert.doesNotMatch(fs.readFileSync(path.resolve(__dirname,'../main.js'),'utf8'),/updateLevelRole|roles\.create|roles\.add|roles\.remove/);
 });
 

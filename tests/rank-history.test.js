@@ -231,3 +231,16 @@ test('old databases migrate without treating undated best ranks as eligible reco
     assert.equal(f.profile('20').rank,2);assert.equal(f.profile('20').bestRank,2);
     f.restart();assert.equal(f.profile('20').bestRank,2);
 });
+
+test('voice XP uses persistent XP accounting and respects the first-day rank delay', t => {
+    const f=fixture(t,undefined,'2026-11-01T12:00:00+09:00');
+    const event={id:'voice:session:first',type:'voice',userId:'20',amount:20,at:Date.parse('2026-11-01T12:01:00+09:00')};
+    f.manager.recordXp(event);assert.equal(f.profile('20').totalXp,70);assert.equal(f.profile('20').collecting,true);
+    f.restart();f.manager.recordXp(event);assert.equal(f.profile('20').totalXp,70);
+    f.setNow('2026-11-02T00:00:00+09:00');
+    f.manager.recordXp({...event,id:'voice:session:second',at:Date.parse('2026-11-02T00:00:00+09:00')});
+    f.manager.recordXp({...event,id:'voice:session:third',at:Date.parse('2026-11-02T00:01:00+09:00')});
+    assert.equal(f.profile('20').totalXp,110);assert.equal(f.profile('20').collecting,false);
+    const user=f.manager.handle.prepare("SELECT level,xp FROM users WHERE user_id='20'").get();
+    assert.deepEqual(user,{level:2,xp:10});
+});

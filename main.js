@@ -6,6 +6,7 @@ const { openRuntime } = require('./archive/archiveManager');
 const GitHubUploader = require('./archive/githubUploader');
 const { startScheduler } = require('./archive/scheduler');
 const { QuizManager } = require('./quiz/quizManager');
+const { VoiceXpManager } = require('./voice/voiceXpManager');
 const { deleteLevelRoles } = require('./roles');
 
 const runtime = openRuntime({ names: () => Object.fromEntries(client.users.cache.map(user => [user.id, {
@@ -20,7 +21,8 @@ const client = new Client({
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildMembers
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.GuildVoiceStates
     ]
 });
 
@@ -47,15 +49,14 @@ columns.forEach(col => {
 });
 
 db.prepare(`CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)`).run();
-if (!db.prepare('SELECT value FROM settings WHERE key = ?').get('quiz_reward_mode')) {
-    db.prepare('INSERT INTO settings (key, value) VALUES (?, ?)').run('quiz_reward_mode', 'RANDOM');
-}
 
 const quiz = new QuizManager({ client, manager, state, channelId: LEVEL_CHANNEL_ID, EmbedBuilder });
+const voiceXp = new VoiceXpManager({ client, manager });
 manager.initializeRankHistory();
 let stopArchive = async () => {};
 
 client.once('ready', async () => {
+    voiceXp.start();
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     await rest.put(Routes.applicationCommands(process.env.APPLICATION_ID), { body: commandsList.map(c => c.data.toJSON()) });
     if (shuttingDown) return;
@@ -71,10 +72,9 @@ client.once('ready', async () => {
 
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !message.guild) return;
-    const xpToAdd = Math.min(10 + Math.floor(message.content.length / 5), 50);
     try {
         manager.recordXp({ id: `message:${message.id}`, type: 'message', userId: message.author.id,
-            amount: xpToAdd, at: Date.now() });
+            amount: 10, at: Date.now() });
     } catch (error) { console.error('메시지 XP 보류:', error.message); return; }
 });
 
@@ -91,6 +91,7 @@ async function shutdown() {
     if (shuttingDown) return;
     shuttingDown = true;
     quiz.stop();
+    voiceXp.stop();
     client.destroy();
     await stopArchive();
     runtime.close();
