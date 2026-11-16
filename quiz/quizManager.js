@@ -111,9 +111,7 @@ class QuizManager {
             void this.start();
         }, Math.max(0, at - this.clock()));
     }
-    async announce(message, channel, { rewardXp, mode, levels }) {
-        for (const level of levels) await channel.send({ content: `${message.author}님 퀴즈 정답으로 레벨업!`,
-            embeds: [new this.EmbedBuilder().setColor('#FFD700').setTitle(`🎊 Lv. ${level} 달성!`).setDescription(`${message.author}님, 레벨업을 축하합니다!`)] });
+    async announce(message, channel, { rewardXp, mode }) {
         const embed = new this.EmbedBuilder().setColor('#00FF00').setTitle('정답!')
             .setThumbnail(message.author.displayAvatarURL({ dynamic: true }))
             .setDescription(`${message.author}님이 가장 먼저 정답을 맞혔습니다!`)

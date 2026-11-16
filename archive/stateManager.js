@@ -15,7 +15,22 @@ class StateManager {
                 CREATE TABLE IF NOT EXISTS quiz (id INTEGER PRIMARY KEY CHECK(id=1), value TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS xp_events (id TEXT PRIMARY KEY, at INTEGER NOT NULL, value TEXT NOT NULL, applied INTEGER NOT NULL DEFAULT 0);
                 CREATE INDEX IF NOT EXISTS xp_events_pending ON xp_events(applied,at);
+                CREATE TABLE IF NOT EXISTS rank_history (
+                    user_id TEXT PRIMARY KEY,
+                    best_rank INTEGER NOT NULL CHECK(best_rank > 0)
+                );
+                CREATE TABLE IF NOT EXISTS season_rank_history (
+                    season_id TEXT NOT NULL,
+                    user_id TEXT NOT NULL,
+                    best_rank INTEGER NOT NULL CHECK(best_rank > 0),
+                    recorded_at INTEGER,
+                    PRIMARY KEY(season_id, user_id)
+                );
             `);
+            const columns = this.db.prepare('PRAGMA table_info(season_rank_history)').all();
+            if (!columns.some(column => column.name === 'recorded_at')) {
+                this.db.exec('ALTER TABLE season_rank_history ADD COLUMN recorded_at INTEGER');
+            }
         }
     }
     get(key) { const row = this.db.prepare('SELECT value FROM meta WHERE key=?').get(key); return row ? JSON.parse(row.value) : null; }

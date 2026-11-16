@@ -3,7 +3,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { integrity, fingerprint, monthOf, monthEnd, writeJson } = require('./utils');
 const { createSnapshot } = require('./snapshot');
-const { applyEvent } = require('./xpEvents');
+const { applyEvent, validateAdjustment } = require('./xpEvents');
+const { recordRankHistory, seedArchivedRanks } = require('./rankHistory');
 
 // All XP mutations and rollover are synchronous on the owning event loop. Never await in run().
 class DatabaseManager {
@@ -12,6 +13,7 @@ class DatabaseManager {
         this.depth = 0;
         this.recoverSwitch();
         this.open();
+        this.initializeRankHistory();
         this.db = new Proxy({}, { get: (_, prop) => {
             if (prop === 'prepare') return sql => new Proxy({}, { get: (__, method) => (...args) => this.handle.prepare(sql)[method](...args) });
             if (prop === 'transaction') return fn => (...args) => this.run(() => this.handle.transaction(fn)(...args));
@@ -37,6 +39,14 @@ class DatabaseManager {
             return value;
         } finally { this.depth--; }
     }
+    initializeRankHistory() {
+        const at = this.clock();
+        seedArchivedRanks(this.state, this.directory, at);
+        const pending = this.state.db.prepare('SELECT 1 FROM xp_events WHERE applied=0 LIMIT 1').get();
+        if (!pending && this.handle.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='users'").get()) {
+            this.handle.transaction(() => recordRankHistory(this.handle, at))();
+        }
+    }
     ensurePeriod(at = this.clock()) {
         if (!this.handle?.open && this.state.get('switch')) { this.recoverSwitch(); this.open(); }
         if (!this.processing) this.drainEvents();
@@ -57,6 +67,10 @@ class DatabaseManager {
         const row = this.state.db.prepare('SELECT value FROM xp_events WHERE id=?').get(event.id);
         return JSON.parse(row.value).result;
     }
+    adjustXp(event) {
+        validateAdjustment(event);
+        return this.recordXp({ ...event, type: 'xpAdjustment' });
+    }
     drainEvents() {
         if (this.processing) return;
         this.processing = true;
@@ -66,6 +80,7 @@ class DatabaseManager {
                 this.ensurePeriod(event.at);
                 this.handle.transaction(() => {
                     const result = applyEvent(this.handle,event);
+                    recordRankHistory(this.handle, event.at);
                     this.handle.prepare('UPDATE system.xp_events SET applied=1,value=? WHERE id=?').run(JSON.stringify({...event,result}),event.id);
                 })();
             }
@@ -97,6 +112,7 @@ class DatabaseManager {
         job.names = job.names || this.names();
         this.state.saveSettlement(job);
         try {
+            this.handle.transaction(() => recordRankHistory(this.handle, this.clock()))();
             integrity(this.handle);
             const sourceHash = fingerprint(this.handle);
             if (job.sourceHash && job.sourceHash !== sourceHash) throw new Error('Source changed after interrupted settlement; manual review required');

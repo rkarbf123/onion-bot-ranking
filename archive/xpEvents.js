@@ -1,8 +1,33 @@
 'use strict';
+const XP_ADMIN_ID = '1159841882290008216';
+
+function validateAdjustment({ actorId, userId, amount }) {
+    if (actorId !== XP_ADMIN_ID) throw new Error('XP 조정 권한이 없습니다.');
+    if (typeof userId !== 'string' || !/^\d+$/.test(userId)) throw new Error('올바른 대상 사용자가 필요합니다.');
+    if (!Number.isSafeInteger(amount) || amount === 0) throw new Error('XP 수량은 1 이상의 정수여야 합니다.');
+}
+
+function adjustXp(db, event) {
+    validateAdjustment(event);
+    const user = db.prepare('SELECT level,xp FROM users WHERE user_id=?').get(event.userId) || { level: 1, xp: 0 };
+    const previousTotalXp = user.level * (user.level - 1) / 2 * 100 + user.xp;
+    const totalXp = Math.max(0, previousTotalXp + event.amount);
+    if (!Number.isSafeInteger(totalXp)) return { rejected: 'XP 수량이 처리 가능한 범위를 초과합니다.' };
+    const baseXp = level => level * (level - 1) / 2 * 100;
+    let level = Math.max(1, Math.floor((1 + Math.sqrt(1 + totalXp / 12.5)) / 2));
+    while (baseXp(level) > totalXp) level--;
+    while (baseXp(level + 1) <= totalXp) level++;
+    const xp = totalXp - baseXp(level);
+    db.prepare(`INSERT INTO users(user_id,level,xp) VALUES (?,?,?)
+        ON CONFLICT(user_id) DO UPDATE SET level=excluded.level,xp=excluded.xp`).run(event.userId, level, xp);
+    return { amount: totalXp - previousTotalXp, previousTotalXp, totalXp, level, xp, levels: [] };
+}
+
 function rewardAmount(user, mode, random = Math.random) {
     return mode === 'RANDOM' ? Math.floor(random() * 401) + 100 : Math.floor(((user.level * 100) + user.xp) * (parseFloat(mode) - 1.0));
 }
 function applyEvent(db, event) {
+    if (event.type === 'xpAdjustment') return adjustXp(db, event);
     if(event.type==='harvestTick') {
         const results=[];
         for(const user of db.prepare('SELECT * FROM users').all()) {
@@ -30,4 +55,4 @@ function applyEvent(db, event) {
     }
     return result;
 }
-module.exports = { applyEvent, rewardAmount };
+module.exports = { applyEvent, rewardAmount, validateAdjustment, XP_ADMIN_ID };

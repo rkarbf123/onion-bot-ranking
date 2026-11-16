@@ -6,7 +6,7 @@ const { openRuntime } = require('./archive/archiveManager');
 const GitHubUploader = require('./archive/githubUploader');
 const { startScheduler } = require('./archive/scheduler');
 const { QuizManager } = require('./quiz/quizManager');
-const schedule = require('node-schedule');
+const { deleteLevelRoles } = require('./roles');
 
 const runtime = openRuntime({ names: () => Object.fromEntries(client.users.cache.map(user => [user.id, {
     username: user.username, avatarUrl: user.displayAvatarURL({ extension: 'png', size: 64 }),
@@ -25,10 +25,8 @@ const client = new Client({
 });
 
 const LEVEL_CHANNEL_ID = '1467237706378514626'; 
-let isDoubleXp = false;
-let hotTimeEndTimer = null;
 
-// DB 초기화 및 아이템 컬럼 추가
+// 기존 DB와 아카이브의 호환성을 위해 과거 컬럼을 유지합니다.
 db.prepare(`
     CREATE TABLE IF NOT EXISTS users (
         user_id TEXT PRIMARY KEY, 
@@ -54,27 +52,8 @@ if (!db.prepare('SELECT value FROM settings WHERE key = ?').get('quiz_reward_mod
 }
 
 const quiz = new QuizManager({ client, manager, state, channelId: LEVEL_CHANNEL_ID, EmbedBuilder });
+manager.initializeRankHistory();
 let stopArchive = async () => {};
-
-/**
- * 🚜 3분 주기 자동 수확
- */
-const harvestJob = schedule.scheduleJob('*/3 * * * *', fireDate => {
-    try { manager.recordXp({ id: `harvest:${fireDate.getTime()}`, type: 'harvestTick', at: Date.now() }); }
-    catch (error) { console.error('자동 수확 XP 보류:', error.message); }
-});
-
-/**
- * 🔥 핫타임 (10분 주기 체크)
- */
-const hotTimeTimer = setInterval(() => {
-    if (!isDoubleXp && Math.random() < 0.17) {
-        isDoubleXp = true;
-        const ch = client.channels.cache.get(LEVEL_CHANNEL_ID);
-        if (ch) ch.send({ embeds: [new EmbedBuilder().setColor('#FF4500').setTitle('🔥 핫타임!').setDescription('10분간 경험치 **2배**!')] });
-        hotTimeEndTimer = setTimeout(() => isDoubleXp = false, 600000);
-    }
-}, 600000);
 
 client.once('ready', async () => {
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -83,21 +62,20 @@ client.once('ready', async () => {
     console.log(`✅ ${client.user.tag} 온라인!`);
     stopArchive = startScheduler(manager, new GitHubUploader(), state);
     await quiz.start();
+    for (const guild of client.guilds.cache.values()) {
+        if (shuttingDown) break;
+        try { await deleteLevelRoles(guild); }
+        catch (error) { console.error(`[${guild.name}] 레벨 역할 조회 실패:`, error.message); }
+    }
 });
 
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !message.guild) return;
-    let xpToAdd = Math.min(10 + Math.floor(message.content.length / 5), 50);
-    if (isDoubleXp) xpToAdd *= 2;
-    let result;
+    const xpToAdd = Math.min(10 + Math.floor(message.content.length / 5), 50);
     try {
-        result = manager.recordXp({ id: `message:${message.id}`, type: 'message', userId: message.author.id,
+        manager.recordXp({ id: `message:${message.id}`, type: 'message', userId: message.author.id,
             amount: xpToAdd, at: Date.now() });
     } catch (error) { console.error('메시지 XP 보류:', error.message); return; }
-    for (const newLevel of result.levels) {
-        const ch = client.channels.cache.get(LEVEL_CHANNEL_ID);
-        if (ch) ch.send({ content: `${message.author}님 레벨업!`, embeds: [new EmbedBuilder().setColor('#FFD700').setTitle(`🎊 Lv. ${newLevel} 달성!`).setDescription(`${message.author}님, 레벨업을 축하합니다!`)] }).catch(console.error);
-    }
 });
 
 client.on('interactionCreate', async (i) => {
@@ -105,7 +83,7 @@ client.on('interactionCreate', async (i) => {
     if (i.channelId !== LEVEL_CHANNEL_ID) return i.reply({ content: '❌ 양파봇 전용 채널에서 사용해주세요.', ephemeral: true });
     const cmd = commandsList.find(c => c.data.name === i.commandName);
     manager.ensurePeriod();
-    if (cmd) await cmd.execute(i, db);
+    if (cmd) await cmd.execute(i, db, { manager });
 });
 
 let shuttingDown = false;
@@ -113,9 +91,6 @@ async function shutdown() {
     if (shuttingDown) return;
     shuttingDown = true;
     quiz.stop();
-    harvestJob.cancel();
-    clearInterval(hotTimeTimer);
-    clearTimeout(hotTimeEndTimer);
     client.destroy();
     await stopArchive();
     runtime.close();

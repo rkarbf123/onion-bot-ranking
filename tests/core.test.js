@@ -12,6 +12,10 @@ const { monthEnd, monthOf, fingerprint, hash, acquireLock } = require('../archiv
 const { QuizManager, generateQuestion, rewardAmount, COOLDOWN } = require('../quiz/quizManager');
 const GitHubUploader = require('../archive/githubUploader');
 const source = path.resolve(__dirname, '../levels.db');
+const sourceDb = new Database(source, { readonly: true });
+const sourceUserCount = sourceDb.prepare('SELECT count(*) AS n FROM users').get().n;
+const sourceTopXp = sourceDb.prepare('SELECT max((level * (level - 1) / 2 * 100) + xp) AS xp FROM users').get().xp;
+sourceDb.close();
 const files = ['levels.db', 'levels_backup.db', 'bot_database.db', 'commands.js'];
 const originalHashes = Object.fromEntries(files.map(file => [file, hash(fs.readFileSync(path.resolve(__dirname, '..', file)))]));
 function fixture(t, opts = {}) {
@@ -33,11 +37,11 @@ function activeQuiz(f, extra = {}) {
     f.state.saveQuiz(q); return q;
 }
 function fakeMessage(extra = {}) { return { id: '101', content: ' 2 ', channelId: '42', createdTimestamp: Date.parse('2026-12-01T00:03:00+09:00'), author: { id: '9000001', bot: false }, ...extra }; }
-test('actual DB schema, 786 users, original XP formula, deterministic ordering', t => {
+test('actual DB schema, current user count, original XP formula, deterministic ordering', t => {
     const f = fixture(t); const db = f.manager.handle;
     const s = createSnapshot(db, period());
-    assert.equal(s.totalUsers, 786);
-    assert.equal(s.rankings[0].totalXp, 2000777);
+    assert.equal(s.totalUsers, sourceUserCount);
+    assert.equal(s.rankings[0].totalXp, sourceTopXp);
     for (const r of s.rankings) {
         const value = db.prepare('SELECT ((level*(level-1)/2*100)+xp) total FROM users WHERE user_id=?').get(r.userId).total;
         assert.equal(r.totalXp, value);
@@ -60,7 +64,7 @@ test('public scope and opt-out are applied before serializing; private users sta
     const s = createSnapshot(f.manager.handle, period(), { publicOnly: true, env });
     assert.equal(s.totalUsers, 2); assert.ok(!s.rankings.some(r => r.userId === ids[1]));
     assert.equal(createSnapshot(f.manager.handle, period(), { publicOnly: true, env: {} }).totalUsers, 0);
-    assert.equal(f.manager.handle.prepare('SELECT count(*) n FROM users').get().n, 786);
+    assert.equal(f.manager.handle.prepare('SELECT count(*) n FROM users').get().n, sourceUserCount);
 });
 test('rollover retains all tables/settings, zeros only requested user fields and redirects cached statement', t => {
     const f = fixture(t); const db = f.manager.handle;
@@ -260,7 +264,7 @@ test('explicit privacy removal updates remote archive/index but cannot modify su
     const uploader=new GitHubUploader({env:uploadEnv,fetchImpl:github.fetch,sleep:async()=>{}});
     await uploader.upload(full);const rankings=full.rankings.slice(1).map((r,i)=>({...r,rank:i+1}));
     const redacted={...full,rankings,totalUsers:rankings.length};await uploader.upload(redacted,{privacyReplacement:true});
-    assert.equal(github.files.get('website/public/data/index.json').value.archives[0].totalUsers,785);
+    assert.equal(github.files.get('website/public/data/index.json').value.archives[0].totalUsers,full.totalUsers-1);
     const altered={...redacted,rankings:redacted.rankings.map((r,i)=>i? r:{...r,username:'changed'})};
     await assert.rejects(uploader.upload(altered,{privacyReplacement:true}),/only remove users/);
 });
@@ -277,7 +281,7 @@ test('real initial dry-run changes no project archive files and opens no runtime
     const {spawnSync}=require('node:child_process');
     const archive=path.resolve(__dirname,'../archive');const before=fs.readdirSync(archive).sort();
     const child=spawnSync(process.execPath,[path.resolve(__dirname,'../archive/cli.js'),'initial','--dry-run'],{encoding:'utf8',cwd:path.resolve(__dirname,'..')});
-    assert.equal(child.status,0,child.stderr);assert.equal(JSON.parse(child.stdout).totalUsers,786);
+    assert.equal(child.status,0,child.stderr);assert.equal(JSON.parse(child.stdout).totalUsers,sourceUserCount);
     assert.deepEqual(fs.readdirSync(archive).sort(),before);
     for(const file of files)assert.equal(hash(fs.readFileSync(path.resolve(__dirname,'..',file))),originalHashes[file]);
 });
